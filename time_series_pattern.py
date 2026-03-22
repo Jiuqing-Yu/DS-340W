@@ -8,13 +8,13 @@ import umap
 from infomap import Infomap
 import networkx as nx
 from sklearn.metrics import silhouette_score
-
+import matplotlib.pyplot as plt
 # -----------------------------
 # 1) Load tidy dataset
 # -----------------------------
-df = pd.read_csv("Valve_Player_Data.csv")  # must have Game_Name, month, Avg_players
+df = pd.read_csv("Valve_Player_Data_with_genres.csv")  # must have Game_Name, month, Avg_players
 df = df.sort_values(["Game_Name", "Month_Year"])
-
+print([col for col in df.columns if "genre" in col])
 games = df["Game_Name"].unique()
 months = np.sort(df["Month_Year"].unique())
 
@@ -53,7 +53,7 @@ DM = cdist_dtw(X_proc, X_proc)
 # 4) UMAP → extract graph
 # -----------------------------
 um = umap.UMAP(
-    n_neighbors=25,
+    n_neighbors=15,
     metric="precomputed",
     random_state=42
 )
@@ -79,7 +79,8 @@ labels  = np.array([modules[i] for i in range(len(games))], dtype=int)
 
 # 6) Evaluate
 # -----------------------------
-sil = silhouette_score(DM, labels, metric="precomputed")
+embedding = um.embedding_
+sil = silhouette_score(embedding, labels)
 print("Silhouette:", sil, "Clusters:", np.unique(labels))
 
 
@@ -88,30 +89,80 @@ pd.DataFrame({"Game_Name": games, "cluster": labels}).to_csv(
     "game_clusters_simple.csv", index=False
 )
 
-# 7) PLOT CLUSTER SHAPES
 # -----------------------------
-import matplotlib.pyplot as plt
-
+# 7) Plot cluster shapes
+# -----------------------------
 clusters = np.unique(labels)
-
-# Normalize time axis between 0 and 1 for plotting
 t = np.linspace(0, 1, X_proc.shape[1])
 
-plt.figure(figsize=(10, 6))
-
 for c in clusters:
+    plt.figure(figsize=(8, 5))
     idx = np.where(labels == c)[0]
     curves = X_proc[idx]
 
     mean_curve = curves.mean(axis=0)
     std_curve  = curves.std(axis=0)
 
-    plt.plot(t, mean_curve, label=f"Cluster {c} (n={len(idx)})")
-    plt.fill_between(t, mean_curve - std_curve, mean_curve + std_curve, alpha=0.2)
+    # plot individual curves
+    for curve in curves:
+        plt.plot(t, curve, alpha=0.2)
 
-plt.title("Cluster Mean Shapes (DTW + UMAP + Infomap)")
-plt.xlabel("Normalized Time")
-plt.ylabel("Smoothed Z-Score (Avg Players)")
-plt.legend()
-plt.tight_layout()
-plt.show()
+    # plot mean + std
+    plt.plot(t, mean_curve, linewidth=2, label="Mean")
+    plt.fill_between(t, mean_curve - std_curve, mean_curve + std_curve, alpha=0.3)
+
+    plt.title(f"Cluster {c} (n={len(idx)})")
+    plt.xlabel("Normalized Time")
+    plt.ylabel("Smoothed Z-Score (Avg Players)")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+# -----------------------------
+# 8) Plot genre distribution per cluster
+# -----------------------------
+# Identify genre columns
+genre_cols = [col for col in df.columns if col.startswith("genre_")]
+
+# One row per game
+game_genres = df.drop_duplicates("Game_Name")[["Game_Name"] + genre_cols]
+
+# Merge with cluster labels
+cluster_df = pd.DataFrame({"Game_Name": games, "cluster": labels})
+merged = cluster_df.merge(game_genres, on="Game_Name", how="left")
+
+clusters = sorted(merged["cluster"].unique())
+
+# Compute total number of games per genre (denominator for all clusters)
+total_genre_counts = merged[genre_cols].sum()
+
+# Loop over clusters → one plot per cluster
+for c in clusters:
+    subset = merged[merged["cluster"] == c]
+    
+    if subset.shape[0] == 0:
+        print(f"Cluster {c} has no games, skipping.")
+        continue
+    
+    # Count how many games in this cluster have each genre
+    cluster_genre_counts = subset[genre_cols].sum()
+    
+    # Compute percentage relative to total games with that genre
+    genre_percent = cluster_genre_counts / total_genre_counts * 100
+    genre_percent = genre_percent.fillna(0)
+    
+    # Skip cluster if all zeros
+    if genre_percent.sum() == 0:
+        print(f"Cluster {c} has no genre flags, skipping.")
+        continue
+    
+    # Plot
+    plt.figure(figsize=(10,5))
+    genre_percent.plot(kind="bar", color="skyblue")
+    plt.title(f"Cluster {c} - % of each genre in this cluster (relative to all games with genre)")
+    plt.ylabel("Percentage (%)")
+    plt.xlabel("Genre")
+    plt.ylim(0, 100)
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    plt.show()
