@@ -7,7 +7,7 @@ Python 3.10
 # Required libraries
 Install the required libraries:
 ```bash
-pip install numpy pandas scipy tslearn umap-learn infomap networkx scikit-learn matplotlib
+python -m pip install numpy pandas scipy tslearn umap-learn infomap networkx scikit-learn matplotlib
 ```
 # Files Structure
 Ensure your project folder contains:
