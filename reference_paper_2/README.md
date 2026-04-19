@@ -7,7 +7,7 @@ Python 3.13
 # Required libraries
 Install the required libraries:
 ```bash
-pip install pandas seaborn matplotlib scikit-learn openpyxl
+python -m pip install pandas seaborn matplotlib scikit-learn openpyxl
 ```
 # Files Structure
 Ensure your project folder contains:
